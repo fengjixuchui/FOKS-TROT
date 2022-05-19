@@ -21,6 +21,10 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "PocUserPanel", "PocUserPane
 		{C31045CA-4801-4818-84FC-5B94A5497C41} = {C31045CA-4801-4818-84FC-5B94A5497C41}
 	EndProjectSection
 EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "core", "core", "{0C952E0C-8D00-47DE-A7C9-F4C57FEF5C83}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "user", "user", "{9C666615-B39C-4E98-BC48-7ADF9ECECDE4}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		amd64|Any CPU = amd64|Any CPU
@@ -212,6 +216,12 @@ Global
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{F9C939D3-70CF-4592-80B5-38C699EE091D} = {0C952E0C-8D00-47DE-A7C9-F4C57FEF5C83}
+		{C31045CA-4801-4818-84FC-5B94A5497C41} = {9C666615-B39C-4E98-BC48-7ADF9ECECDE4}
+		{A61F1FE8-039A-44BB-A034-FEAB8A19A629} = {9C666615-B39C-4E98-BC48-7ADF9ECECDE4}
+		{CA140E39-BB9D-41C0-82EE-EBAA8D98161F} = {9C666615-B39C-4E98-BC48-7ADF9ECECDE4}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {EE96978B-B127-4E81-A0AC-42417543E15E}

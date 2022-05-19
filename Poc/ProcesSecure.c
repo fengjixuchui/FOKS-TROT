@@ -1038,14 +1038,14 @@ NTSTATUS PocProcessInit()
 	}
 
 
-	Status = PocProcessObjectCallbackInit();
+	/*Status = PocProcessObjectCallbackInit();
 
 	if (STATUS_SUCCESS != Status)
 	{
 		PT_DBG_PRINT(PTDBG_TRACE_ROUTINES,
 			("%s->PocProcessObjectCallbackInit failed. Status = 0x%x.", __FUNCTION__, Status));
 		goto EXIT;
-	}
+	}*/
 	
 
 	Status = PsSetCreateProcessNotifyRoutineEx(

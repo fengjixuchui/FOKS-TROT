@@ -4,6 +4,7 @@
 #include "utils.h"
 #include "filefuncs.h"
 #include "process.h"
+#include "cipher.h"
 
 
 FLT_PREOP_CALLBACK_STATUS
@@ -61,7 +62,7 @@ PocPreQueryInformationOperation(
 
     Status = PocGetProcessName(Data, ProcessName);
 
-    if (!StreamContext->IsCipherText)
+    if (!StreamContext->IsCipherText && 0 == StreamContext->FileSize)
     {
         Status = FLT_PREOP_SUCCESS_NO_CALLBACK;
         goto EXIT;
@@ -180,7 +181,140 @@ PocPreSetInformationOperation(
 
     NTSTATUS Status;
 
-    
+    PPOC_STREAM_CONTEXT StreamContext = NULL;
+    BOOLEAN ContextCreated = FALSE;
+
+    PVOID InfoBuffer = NULL;
+    WCHAR ProcessName[POC_MAX_NAME_LENGTH] = { 0 };
+
+    Status = PocFindOrCreateStreamContext(
+        Data->Iopb->TargetInstance,
+        Data->Iopb->TargetFileObject,
+        FALSE,
+        &StreamContext,
+        &ContextCreated);
+
+    if (STATUS_SUCCESS != Status)
+    {
+        if (STATUS_NOT_FOUND != Status && !FsRtlIsPagingFile(Data->Iopb->TargetFileObject))
+            /*
+            * 说明不是目标扩展文件，在Create中没有创建StreamContext，不认为是个错误
+            * 或者是一个Paging file，这里会返回0xc00000bb，
+            * 原因是Fcb->Header.Flags2, FSRTL_FLAG2_SUPPORTS_FILTER_CONTEXTS被清掉了
+            *
+            //
+            //  To make FAT match the present functionality of NTFS, disable
+            //  stream contexts on paging files
+            //
+
+            if (IsPagingFile) {
+                SetFlag( Fcb->Header.Flags2, FSRTL_FLAG2_IS_PAGING_FILE );
+                ClearFlag( Fcb->Header.Flags2, FSRTL_FLAG2_SUPPORTS_FILTER_CONTEXTS );
+            }
+            */
+        {
+            PT_DBG_PRINT(PTDBG_TRACE_ROUTINES, ("%s->PocFindOrCreateStreamContext failed. Status = 0x%x\n",
+                __FUNCTION__,
+                Status));
+        }
+        goto EXIT;
+    }
+
+
+    InfoBuffer = Data->Iopb->Parameters.SetFileInformation.InfoBuffer;
+
+    switch (Data->Iopb->Parameters.QueryFileInformation.FileInformationClass)
+    {
+    case FileEndOfFileInformation:
+    {
+        PFILE_END_OF_FILE_INFORMATION Info = (PFILE_END_OF_FILE_INFORMATION)InfoBuffer;
+
+        if (Info->EndOfFile.QuadPart < AES_BLOCK_SIZE)
+        {
+            ExEnterCriticalRegionAndAcquireResourceExclusive(StreamContext->Resource);
+
+            StreamContext->FileSize = Info->EndOfFile.LowPart;
+
+            ExReleaseResourceAndLeaveCriticalRegion(StreamContext->Resource);
+
+            Info->EndOfFile.QuadPart = (Info->EndOfFile.QuadPart / AES_BLOCK_SIZE + 1) * AES_BLOCK_SIZE;
+
+            Status = PocGetProcessName(Data, ProcessName);
+
+            PT_DBG_PRINT(PTDBG_TRACE_ROUTINES, ("%s->EndOfFile filename = %ws origin filesize = %d new filesize = %d process = %ws.\n",
+                __FUNCTION__,
+                StreamContext->FileName,
+                StreamContext->FileSize,
+                Info->EndOfFile.LowPart,
+                ProcessName));
+
+            FltSetCallbackDataDirty(Data);
+        }
+
+        break;
+    }
+    case FileStandardInformation:
+    {
+        PFILE_STANDARD_INFORMATION Info = (PFILE_STANDARD_INFORMATION)InfoBuffer;
+
+        if (Info->EndOfFile.QuadPart < AES_BLOCK_SIZE)
+        {
+            Info->EndOfFile.QuadPart = (Info->EndOfFile.QuadPart / AES_BLOCK_SIZE + 1) * AES_BLOCK_SIZE;
+
+            ExEnterCriticalRegionAndAcquireResourceExclusive(StreamContext->Resource);
+
+            StreamContext->FileSize = Info->EndOfFile.LowPart;
+
+            ExReleaseResourceAndLeaveCriticalRegion(StreamContext->Resource);
+
+            /*PT_DBG_PRINT(PTDBG_TRACE_ROUTINES, ("%s->StandInfo EndOfFile filename = %ws origin filesize = %d new filesize = %d.\n",
+                __FUNCTION__,
+                StreamContext->FileName,
+                StreamContext->FileSize,
+                Info->EndOfFile.LowPart));*/
+
+            FltSetCallbackDataDirty(Data);
+        }
+
+        if (Info->AllocationSize.QuadPart < AES_BLOCK_SIZE)
+        {
+            Info->AllocationSize.QuadPart = (Info->AllocationSize.QuadPart / AES_BLOCK_SIZE + 1) * AES_BLOCK_SIZE;
+
+            /*PT_DBG_PRINT(PTDBG_TRACE_ROUTINES, ("%s->StandInfo Alloc filename = %ws origin filesize = %d new filesize = %d.\n",
+                __FUNCTION__,
+                StreamContext->FileName,
+                StreamContext->FileSize,
+                Info->AllocationSize.LowPart));*/
+
+            FltSetCallbackDataDirty(Data);
+        }
+
+        break;
+    }
+    case FileAllocationInformation:
+    {
+        PFILE_ALLOCATION_INFORMATION Info = (PFILE_ALLOCATION_INFORMATION)InfoBuffer;
+
+        if (Info->AllocationSize.QuadPart < AES_BLOCK_SIZE)
+        {
+            Info->AllocationSize.QuadPart = (Info->AllocationSize.QuadPart / AES_BLOCK_SIZE + 1) * AES_BLOCK_SIZE;
+
+            /*PT_DBG_PRINT(PTDBG_TRACE_ROUTINES, ("%s->AllocInfo filename = %ws origin filesize = %d new filesize = %d.\n",
+                __FUNCTION__,
+                StreamContext->FileName,
+                StreamContext->FileSize,
+                Info->AllocationSize.LowPart));*/
+
+            FltSetCallbackDataDirty(Data);
+        }
+        
+        break;
+    }
+
+    }
+
+EXIT:
+
     Status = FLT_PREOP_SUCCESS_WITH_CALLBACK;
 
     return Status;
@@ -218,6 +352,7 @@ PocPostSetInformationOperation(
 
     WCHAR ProcessName[POC_MAX_NAME_LENGTH] = { 0 };
 
+    PAGED_CODE();
 
     if (STATUS_SUCCESS != Data->IoStatus.Status)
     {
@@ -245,9 +380,14 @@ PocPostSetInformationOperation(
         }
         else
         {
-            if (wcslen(TargetFileObject->FileName.Buffer) * sizeof(WCHAR) < sizeof(NewFileName))
+            if (NULL != TargetFileObject->FileName.Buffer &&
+                wcslen(TargetFileObject->FileName.Buffer) * sizeof(WCHAR) < sizeof(NewFileName))
             {
                 RtlMoveMemory(NewFileName, TargetFileObject->FileName.Buffer, wcslen(TargetFileObject->FileName.Buffer) * sizeof(WCHAR));
+            }
+            else
+            {
+                goto EXIT;
             }
         }
 
@@ -270,7 +410,7 @@ PocPostSetInformationOperation(
             * 不一致则会交给PostClose修改Tailer
             */
 
-            Status = PocBypassIrrelevantFileExtension(NewFileExtension);
+            Status = PocBypassIrrelevantBy_PathAndExtension(Data);
 
             if (POC_IRRELEVENT_FILE_EXTENSION == Status || NULL != TargetFileObject)
             {
@@ -310,7 +450,7 @@ PocPostSetInformationOperation(
             * 到这里，说明原来的扩展名不是目标扩展名，所以没有进入PostCreate为其创建StreamContext
             */
 
-            Status = PocBypassIrrelevantFileExtension(NewFileExtension);
+            Status = PocBypassIrrelevantBy_PathAndExtension(Data);
 
             if (POC_IS_TARGET_FILE_EXTENSION == Status)
             {
@@ -390,6 +530,7 @@ PocPostSetInformationOperation(
 
         break;
     }
+    
     }
 
 EXIT:
