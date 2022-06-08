@@ -1,4 +1,3 @@
-#pragma warning(disable:4996)
 
 #include "processecure.h"
 #include "process.h"
@@ -14,7 +13,8 @@ KSTART_ROUTINE PocProcessIntegrityCheckThread;
 NTSTATUS PocProcessIntegrityCheck(
 	IN PEPROCESS EProcess)
 /*
-* 对进程的代码段进行校验
+* 对进程的代码段进行校验，后续也可将进程内的所有dll的代码段进行校验，
+* 防止hook；或者对进程本身做签名验证
 */
 {
 
@@ -537,6 +537,10 @@ OB_PREOP_CALLBACK_STATUS PocPreObjectOperation(
 	UNREFERENCED_PARAMETER(RegistrationContext);
 	UNREFERENCED_PARAMETER(OperationInformation);
 
+	/*
+	* 整体放入PocDoCompletionProcessingWhenSafe函数中，未做
+	*/
+
 	PAGED_CODE();
 
 	OB_PREOP_CALLBACK_STATUS Status = { 0 };
@@ -840,7 +844,6 @@ VOID PocProcessNotifyRoutineEx(
 	PPOC_PROCESS_RULES OutProcessRules = NULL;
 	PPOC_CREATED_PROCESS_INFO OutProcessInfo = NULL;
 
-
 	Status = SeLocateProcessImageName(Process, &uProcessName);
 
 	if (!NT_SUCCESS(Status))
@@ -944,6 +947,8 @@ VOID PocLoadImageNotifyRoutine(
 		return;
 	}
 
+	PAGED_CODE();
+
 	NTSTATUS Status = 0;
 	PPOC_CREATED_PROCESS_INFO OutProcessInfo = NULL;
 
@@ -1008,7 +1013,7 @@ EXIT:
 }
 
 
-NTSTATUS PocProcessInit()
+NTSTATUS PocInitProcess()
 {
 	NTSTATUS Status = 0;
 
@@ -1059,8 +1064,8 @@ NTSTATUS PocProcessInit()
 		goto EXIT;
 	}
 
-	PT_DBG_PRINT(PTDBG_TRACE_ROUTINES, 
-		("%s->PsSetCreateProcessNotifyRoutineEx success.\n", __FUNCTION__));
+	/*PT_DBG_PRINT(PTDBG_TRACE_ROUTINES, 
+		("%s->PsSetCreateProcessNotifyRoutineEx init success.\n", __FUNCTION__));*/
 
 
 	/*
@@ -1119,10 +1124,11 @@ NTSTATUS PocProcessInit()
 
 		if (!NT_SUCCESS(Status))
 		{
-			PT_DBG_PRINT(PTDBG_TRACE_ROUTINES, ("%s->PsLookupProcessByProcessId UniqueProcessId = %I64d failed. Status = 0x%x.\n",
-				__FUNCTION__,
-				(LONGLONG)ProcessInfo->UniqueProcessId,
-				Status));
+			if(0 != ProcessInfo->UniqueProcessId)
+				PT_DBG_PRINT(PTDBG_TRACE_ROUTINES, ("%s->PsLookupProcessByProcessId UniqueProcessId = %I64d failed. Status = 0x%x.\n",
+					__FUNCTION__,
+					(LONGLONG)ProcessInfo->UniqueProcessId,
+					Status));
 
 			goto ERROR;
 		}
@@ -1214,8 +1220,8 @@ ERROR:
 		goto EXIT;
 	}
 
-	PT_DBG_PRINT(PTDBG_TRACE_ROUTINES,
-		("%s->PsSetLoadImageNotifyRoutine success.\n", __FUNCTION__));
+	/*PT_DBG_PRINT(PTDBG_TRACE_ROUTINES,
+		("%s->PsSetLoadImageNotifyRoutine init success.\n", __FUNCTION__));*/
 
 
 	/*
@@ -1241,8 +1247,8 @@ ERROR:
 		goto EXIT;
 	}
 
-	PT_DBG_PRINT(PTDBG_TRACE_ROUTINES,
-		("%s->PsCreateSystemThread PocProcessIntegrityCheckThread init success.\n", __FUNCTION__));
+	/*PT_DBG_PRINT(PTDBG_TRACE_ROUTINES,
+		("%s->PsCreateSystemThread PocProcessIntegrityCheckThread init success.\n", __FUNCTION__));*/
 
 	if (NULL != ThreadHandle)
 	{

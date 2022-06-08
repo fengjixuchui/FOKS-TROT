@@ -2,7 +2,6 @@
 #include "process.h"
 #include "utils.h"
 #include "processecure.h"
-#include "secure_process.h"
 
 LIST_ENTRY PocProcessRulesListHead = { 0 };
 PKSPIN_LOCK PocProcessRulesListSpinLock = { 0 };
@@ -16,8 +15,11 @@ NTSTATUS PocCreateProcessRulesNode(
 NTSTATUS PocGetProcessName(
 	IN PFLT_CALLBACK_DATA Data,
 	IN OUT PWCHAR ProcessName)
+/*
+* 这个函数，如果只是用作DbgPrint输出进程名的话，
+* 不要判断返回的Status，因为有可能获取进程名失败
+*/
 {
-
 	if (NULL == Data)
 	{
 		PT_DBG_PRINT(PTDBG_TRACE_ROUTINES, ("%s->Data is NULL.\n", __FUNCTION__));
@@ -43,6 +45,7 @@ NTSTATUS PocGetProcessName(
 	if (NULL == eProcess) {
 
 		PT_DBG_PRINT(PTDBG_TRACE_ROUTINES, ("%s->EProcess FltGetRequestorProcess failed.\n", __FUNCTION__));
+		Status = STATUS_UNSUCCESSFUL;
 		goto EXIT;
 	}
 
@@ -51,9 +54,9 @@ NTSTATUS PocGetProcessName(
 
 	if (NULL == ProcessId)
 	{
-		PT_DBG_PRINT(PTDBG_TRACE_ROUTINES,
+		/*PT_DBG_PRINT(PTDBG_TRACE_ROUTINES,
 			("%s->PsGetProcessId %p failed.\n",
-				__FUNCTION__, eProcess));
+				__FUNCTION__, eProcess));*/
 
 		Status = STATUS_UNSUCCESSFUL;
 
@@ -116,8 +119,14 @@ EXIT:
 }
 
 
-NTSTATUS PocAddProcessRuleNode(const PWCHAR process, int access_mode)
+NTSTATUS PocAddProcessRuleNode(IN PWCHAR ProcessName, IN ULONG Access)
 {
+	if (NULL == ProcessName)
+	{
+		PT_DBG_PRINT(PTDBG_TRACE_ROUTINES, ("%s->ProcessName is NULL.\n", __FUNCTION__));
+		return STATUS_INVALID_PARAMETER;
+	}
+
 	PPOC_PROCESS_RULES ProcessRules = NULL;
 
 	NTSTATUS Status = PocCreateProcessRulesNode(&ProcessRules);
@@ -128,18 +137,21 @@ NTSTATUS PocAddProcessRuleNode(const PWCHAR process, int access_mode)
 		goto EXIT;
 	}
 
-	ProcessRules->Access = access_mode;
+	ProcessRules->Access = Access;
 
-	Status = PocSymbolLinkPathToDosPath(process, ProcessRules->ProcessName);
+	Status = PocSymbolLinkPathToDosPath(ProcessName, ProcessRules->ProcessName);
 
 	if (STATUS_SUCCESS != Status)
 	{
 		PT_DBG_PRINT(PTDBG_TRACE_ROUTINES, ("%s->PocSymbolLinkPathToDosPath failed. Status = 0x%x.\n", __FUNCTION__, Status));
 		goto EXIT;
 	}
+
 EXIT:
+
 	return Status;
 }
+
 
 NTSTATUS PocProcessRulesListInit()
 {
@@ -606,7 +618,10 @@ NTSTATUS PocFindProcessInfoNodeByPidEx(
 				}
 			}
 			
-			if (FALSE == IntegrityCheck && ProcessInfo->ProcessId == ProcessId)
+			if (FALSE == IntegrityCheck && 
+				NULL != ProcessInfo && 
+				NULL != ProcessId &&
+				ProcessInfo->ProcessId == ProcessId)
 			{
 
 				if (Remove)
