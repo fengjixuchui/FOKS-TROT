@@ -23,6 +23,8 @@ typedef struct _POC_CREATED_PROCESS_INFO
 
 }POC_CREATED_PROCESS_INFO, * PPOC_CREATED_PROCESS_INFO;
 
+extern LIST_ENTRY PocProcessRulesListHead;
+
 #define POC_PR_ACCESS_READWRITE			1
 #define POC_PR_ACCESS_BACKUP			2
 
@@ -61,3 +63,5 @@ NTSTATUS PocCreateProcessInfoNode(
 	OUT PPOC_CREATED_PROCESS_INFO* OutProcessInfo);
 
 NTSTATUS PocIsUnauthorizedProcess(IN PWCHAR ProcessName);
+
+NTSTATUS PocGetProcessType(IN PFLT_CALLBACK_DATA Data);

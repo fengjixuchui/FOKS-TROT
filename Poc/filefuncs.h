@@ -60,3 +60,24 @@ NTSTATUS PocReentryToDecrypt(
 	IN PWCHAR FileName);
 
 KSTART_ROUTINE PocAppendEncTailerThread;
+
+NTSTATUS PocReadFileFromCache(
+	IN PFLT_INSTANCE Instance,
+	IN PFILE_OBJECT FileObject,
+	IN LARGE_INTEGER ByteOffset,
+	IN PCHAR ReadBuffer,
+	IN ULONG ReadLength);
+
+NTSTATUS PocInitFlushFileObject(
+	IN PWCHAR FileName,
+	IN OUT PFILE_OBJECT* FileObject);
+
+NTSTATUS PocFindOrCreateStreamContextOutsite(
+	IN PFLT_INSTANCE Instance,
+	IN PWCHAR FileName,
+	IN BOOLEAN CreateIfNotFound);
+
+VOID PocPurgeCache(
+	IN PWCHAR FileName,
+	IN PFLT_INSTANCE Instance,
+	IN PSECTION_OBJECT_POINTERS SectionObjectPointers);

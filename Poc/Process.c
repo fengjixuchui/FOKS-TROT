@@ -119,7 +119,9 @@ EXIT:
 }
 
 
-NTSTATUS PocAddProcessRuleNode(IN PWCHAR ProcessName, IN ULONG Access)
+NTSTATUS PocAddProcessRuleNode(
+	IN PWCHAR ProcessName, 
+	IN ULONG Access)
 {
 	if (NULL == ProcessName)
 	{
@@ -197,9 +199,20 @@ NTSTATUS PocProcessRulesListInit()
 	for(const PWCHAR *p = secure_process; *p; p++)
 	{
 		Status = PocAddProcessRuleNode(*p, POC_PR_ACCESS_READWRITE);
+
 		if (Status != STATUS_SUCCESS)
 		{
-			goto EXIT;
+			continue;
+		}
+	}
+
+	for (const PWCHAR* p = backup_process; *p; p++)
+	{
+		Status = PocAddProcessRuleNode(*p, POC_PR_ACCESS_BACKUP);
+
+		if (Status != STATUS_SUCCESS)
+		{
+			continue;
 		}
 	}
 
@@ -689,13 +702,72 @@ NTSTATUS PocIsUnauthorizedProcess(IN PWCHAR ProcessName)
 		NULL != OutProcessRules &&
 		POC_PR_ACCESS_READWRITE == OutProcessRules->Access)
 	{
-		//PT_DBG_PRINT( PTDBG_TRACE_ROUTINES,("%s->Auth:: %ws\n", __FUNCTION__, ProcessName));
+		//PT_DBG_PRINT( PTDBG_TRACE_ROUTINES,("%s->Auth = %ws\n", __FUNCTION__, ProcessName));
 		return POC_IS_AUTHORIZED_PROCESS;
+	}
+	else if (STATUS_SUCCESS == Status &&
+		NULL != OutProcessRules &&
+		POC_PR_ACCESS_BACKUP == OutProcessRules->Access)
+	{
+		return POC_IS_BACKUP_PROCESS;
 	}
 	else
 	{
-		//PT_DBG_PRINT( PTDBG_TRACE_ROUTINES,("%s->UnAuth:: %ws\n", __FUNCTION__, ProcessName));
+		//PT_DBG_PRINT( PTDBG_TRACE_ROUTINES,("%s->UnAuth = %ws\n", __FUNCTION__, ProcessName));
 		return POC_IS_UNAUTHORIZED_PROCESS;
 	}
 
+}
+
+
+NTSTATUS PocGetProcessType(IN PFLT_CALLBACK_DATA Data)
+{
+	NTSTATUS Status = POC_IS_UNAUTHORIZED_PROCESS;
+
+	PEPROCESS eProcess = NULL;
+	HANDLE ProcessId = NULL;
+
+	PPOC_CREATED_PROCESS_INFO OutProcessInfo = NULL;
+
+	eProcess = FltGetRequestorProcess(Data);
+
+	if (NULL == eProcess)
+	{
+		PT_DBG_PRINT(PTDBG_TRACE_ROUTINES, ("%s->EProcess FltGetRequestorProcess failed.\n", __FUNCTION__));
+		goto EXIT;
+	}
+
+	ProcessId = PsGetProcessId(eProcess);
+
+	if (NULL == ProcessId)
+	{
+		PT_DBG_PRINT(PTDBG_TRACE_ROUTINES,
+			("%s->PsGetProcessId %p failed.\n",
+				__FUNCTION__, eProcess));
+		goto EXIT;
+	}
+
+	Status = PocFindProcessInfoNodeByPidEx(
+		ProcessId,
+		&OutProcessInfo,
+		FALSE,
+		FALSE);
+
+	if (STATUS_SUCCESS == Status &&
+		NULL != OutProcessInfo)
+	{
+		if (POC_PR_ACCESS_READWRITE == OutProcessInfo->OwnedProcessRule->Access)
+		{
+			return POC_IS_AUTHORIZED_PROCESS;
+		}
+		else if(POC_PR_ACCESS_BACKUP == OutProcessInfo->OwnedProcessRule->Access)
+		{
+			return POC_IS_BACKUP_PROCESS;
+		}
+	}
+
+
+EXIT:
+
+	return Status;
 }
